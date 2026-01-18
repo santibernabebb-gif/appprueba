@@ -1,61 +1,49 @@
 
-export enum ActivityLevel {
-  SEDENTARY = 'sedentario',
-  LIGHT = 'ligera',
-  MODERATE = 'moderada',
-  HIGH = 'alta'
-}
-
-export enum DietPreference {
-  OMNIVORE = 'omnivoro',
-  VEGETARIAN = 'vegetariano'
-}
-
-export type FastingType = 'none' | '12-20' | '9-17';
+export type View = 'welcome' | 'onboarding' | 'dashboard' | 'history';
 
 export interface UserData {
+  name: string;
   age: number;
-  sex: 'male' | 'female';
-  height: number;
   weight: number;
-  activity: ActivityLevel;
-  diet: DietPreference;
+  height: number;
+  gender: 'male' | 'female';
+  activityLevel: 'sedentary' | 'light' | 'moderate' | 'heavy';
+  goal: 'lose' | 'maintain' | 'gain';
+  dietType: 'mediterranean' | 'vegetarian' | 'vegan';
+  fasting: 'none' | '16:8_morning' | '16:8_evening';
   allergies: string;
-  dislikedFoods: string;
-  mealsPerDay: number;
-  fastingType: FastingType;
-  budget: 'bajo' | 'medio' | 'alto';
-  cookingTime: 'rapido' | 'normal';
 }
 
-export interface Meal {
+export interface Recipe {
   name: string;
-  type: string;
-  time: string;
   ingredients: string[];
   instructions: string[];
   calories: number;
-  prepTime: string;
-  alternatives: string[];
+  prepTime: number; // in minutes
 }
 
-export interface DailyPlan {
+export interface DayPlan {
   day: string;
-  meals: Meal[];
+  meals: {
+    breakfast?: Recipe;
+    snack1?: Recipe;
+    lunch: Recipe;
+    snack2?: Recipe;
+    dinner?: Recipe;
+  };
   totalCalories: number;
-  waterGoal: string;
 }
 
 export interface WeeklyPlan {
   id: string;
   date: string;
-  days: DailyPlan[];
-  shoppingList: string[];
+  targetCalories: number;
+  days: DayPlan[];
 }
 
-export interface PlanHistoryEntry {
-  id: string;
-  date: string;
-  plan: WeeklyPlan;
-  userData: UserData;
+export interface AppState {
+  view: View;
+  user: UserData | null;
+  activePlan: WeeklyPlan | null;
+  history: WeeklyPlan[];
 }

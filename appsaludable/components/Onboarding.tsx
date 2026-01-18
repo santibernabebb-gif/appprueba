@@ -1,224 +1,500 @@
 
-import React, { useState } from 'react';
-import { UserData, ActivityLevel, DietPreference, FastingType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { UserData, WeeklyPlan } from '../types';
+import { calculateTDEE, calculateTargetCalories } from '../constants';
+import { generatePlan } from '../services/geminiService';
 
 interface Props {
-  onComplete: (data: UserData) => void;
+  onComplete: (user: UserData, plan: WeeklyPlan) => void;
   onCancel: () => void;
+  onViewHistory: () => void;
+  hasHistory: boolean;
 }
 
-const Onboarding: React.FC<Props> = ({ onComplete, onCancel }) => {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [data, setData] = useState<UserData>({
-    age: 30, sex: 'female', height: 165, weight: 70, 
-    activity: ActivityLevel.LIGHT, diet: DietPreference.OMNIVORE,
-    allergies: '', dislikedFoods: '', mealsPerDay: 3, 
-    fastingType: 'none', budget: 'medio', cookingTime: 'normal'
+const Onboarding: React.FC<Props> = ({ onComplete, onCancel, onViewHistory, hasHistory }) => {
+  const [step, setStep] = useState(1);
+  const [subStep4, setSubStep4] = useState(0); // 0 para actividad, 1 para objetivo (solo móvil)
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<any>({});
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  
+  const [formData, setFormData] = useState<any>({
+    name: '',
+    age: 30,
+    weight: 75,
+    height: 175,
+    gender: 'male',
+    activityLevel: 'light',
+    goal: 'lose',
+    dietType: 'mediterranean',
+    fasting: 'none',
+    allergies: ''
   });
-  const [safetyBlocked, setSafetyBlocked] = useState(false);
 
-  const totalSteps = 4;
+  const [safetyCheck, setSafetyCheck] = useState({
+    pregnancy: false,
+    under18: false,
+    diabetesHeart: false,
+    eatingDisorders: false
+  });
 
-  const next = () => setCurrentStep(s => Math.min(s + 1, totalSteps));
-  const prev = () => {
-    if (currentStep === 1) {
-      onCancel();
-    } else {
-      setCurrentStep(s => s - 1);
+  // Detección de dispositivo móvil
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev: any) => ({ 
+      ...prev, 
+      [name]: value 
+    }));
+    if (fieldErrors[name]) {
+      setFieldErrors((prev: any) => ({ ...prev, [name]: undefined }));
     }
   };
 
-  const handleSafetyCheck = (checked: boolean) => {
-    if (checked) setSafetyBlocked(true);
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    const { name } = e.target;
+    if (name === 'age' || name === 'weight' || name === 'height') {
+      setFormData((prev: any) => ({ ...prev, [name]: '' }));
+      setFieldErrors((prev: any) => ({ ...prev, [name]: undefined }));
+    }
   };
 
-  if (safetyBlocked) {
-    return (
-      <div className="max-w-xl mx-auto mt-6 p-8 bg-white rounded-[2rem] shadow-xl shadow-emerald-900/5 border border-emerald-50 animate-fade-in text-center">
-        <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Priorizamos tu Bienestar</h2>
-        <p className="text-sm text-slate-600 mb-8 leading-relaxed">
-          Para que tu camino hacia una vida más saludable sea seguro y efectivo, en tu caso particular te recomendamos <strong>consultar con un profesional sanitario</strong> antes de iniciar cualquier plan automatizado.
-        </p>
+  const nextStep = () => {
+    if (step === 1) {
+      const hasMedicalCondition = Object.values(safetyCheck).some(val => val === true);
+      if (hasMedicalCondition) {
+        setIsBlocked(true);
+        return;
+      }
+    } else if (step === 2) {
+      const age = Number(formData.age);
+      const weight = Number(formData.weight);
+      const height = Number(formData.height);
+      const errors: any = {};
+
+      if (!formData.age || isNaN(age) || age < 14 || age > 100) {
+        errors.age = "Edad no válida (14-100)";
+      }
+      if (!formData.weight || isNaN(weight) || weight < 35 || weight > 250) {
+        errors.weight = "Peso no válido (35-250)";
+      }
+      if (!formData.height || isNaN(height) || height < 120 || height > 230) {
+        errors.height = "Altura no válida (120-230)";
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+      setFieldErrors({});
+    } else if (step === 4 && isMobile && subStep4 === 0) {
+      setSubStep4(1);
+      return;
+    }
+    setStep(s => s + 1);
+  };
+
+  const prevStep = () => {
+    if (step === 4 && isMobile && subStep4 === 1) {
+      setSubStep4(0);
+      return;
+    }
+    if (step === 1) onCancel();
+    else setStep(s => s - 1);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const finalData: UserData = {
+        ...formData,
+        name: formData.name.trim() || 'Usuario',
+        age: Number(formData.age),
+        weight: Number(formData.weight),
+        height: Number(formData.height)
+      };
+
+      const tdee = calculateTDEE(
+        finalData.gender,
+        finalData.weight,
+        finalData.height,
+        finalData.age,
+        finalData.activityLevel
+      );
+      const targetCals = calculateTargetCalories(tdee, finalData.goal);
+      
+      const plan = await generatePlan(finalData, targetCals);
+      onComplete(finalData, plan);
+    } catch (err: any) {
+      setError(err.message || 'Error al generar el plan');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const Branding = () => (
+    <div className="absolute top-4 md:top-6 left-6 text-left no-print">
+      <p className="text-sm font-bold text-primary-700 leading-none">AdelgazaSaludable</p>
+      <p className="text-[10px] text-gray-400 font-medium">SantiSystems</p>
+    </div>
+  );
+
+  const FooterAESAN = () => (
+    <div className="mt-8 md:mt-12 pt-6 md:pt-8 border-t border-gray-100 w-full text-center max-w-2xl mx-auto">
+      <p className="text-[10px] md:text-[11px] text-gray-400 leading-relaxed italic">
+        Estas recetas siguen estrictamente las directrices nutricionales de la <span className="font-bold text-gray-500">AESAN</span>. 
+        IA supervisada para garantizar que las sugerencias sean reales y saludables.
+      </p>
+      <p className="text-[9px] text-gray-300 mt-3 font-medium uppercase">SantiSystems 2026</p>
+    </div>
+  );
+
+  const TopNavigation = () => (
+    <div className="absolute top-4 md:top-6 right-6 flex flex-col items-end gap-2 no-print">
+      {step >= 2 && (
         <button 
           onClick={onCancel}
-          className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl transition-all"
+          className="text-[10px] md:text-xs font-bold text-gray-500 hover:text-gray-700 flex items-center bg-white shadow-sm border border-gray-100 px-3 py-1.5 rounded-xl transition-all active:scale-95"
         >
-          Entendido, volver al inicio
+          <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Inicio
         </button>
+      )}
+      <button 
+        onClick={onViewHistory}
+        className="text-[10px] md:text-xs font-bold text-primary-600 hover:text-primary-700 flex items-center bg-white shadow-sm border border-primary-50 px-3 py-1.5 rounded-xl transition-all active:scale-95"
+      >
+        <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Historial recetas
+      </button>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6 text-center">
+        <Branding />
+        <div className="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mb-6"></div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Generando Plan Saludable...</h2>
+        <p className="text-gray-500 max-w-xs">Nuestra IA supervisada por la AESAN está configurando tus comidas.</p>
+        <FooterAESAN />
+      </div>
+    );
+  }
+
+  if (isBlocked) {
+    return (
+      <div className="relative min-h-screen max-w-3xl mx-auto px-6 py-12 md:py-24 fade-in flex flex-col items-center justify-center text-center">
+        <Branding />
+        <div className="bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-red-100 space-y-6 w-full">
+          <div className="w-16 h-16 md:w-20 md:h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 md:w-10 md:h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          </div>
+          <h2 className="text-2xl font-black text-gray-900">Aviso de Seguridad</h2>
+          <p className="text-gray-600 leading-relaxed text-sm md:text-base">
+            Por tu seguridad, esta aplicación no es adecuada para tu situación. 
+            <br />
+            <strong>Consulta con un profesional sanitario.</strong>
+          </p>
+          <button
+            onClick={() => onCancel()}
+            className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+          >
+            Volver atrás
+          </button>
+        </div>
+        <FooterAESAN />
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-4 md:py-6">
-      {/* Progress Bar */}
-      <div className="mb-8 flex items-center justify-between gap-4">
-        {[1, 2, 3, 4].map(s => (
-          <div key={s} className="flex-1 h-2 rounded-full bg-slate-200 relative overflow-hidden">
-            <div 
-              className={`absolute inset-0 bg-emerald-500 transition-all duration-500 ${currentStep >= s ? 'w-full' : 'w-0'}`}
-            ></div>
-          </div>
+    <div className="relative min-h-screen max-w-3xl mx-auto px-6 pt-16 md:pt-24 pb-8 md:pb-24 fade-in flex flex-col">
+      <Branding />
+      <TopNavigation />
+      
+      <button onClick={prevStep} className="mb-4 md:mb-8 flex items-center text-primary-600 font-semibold hover:text-primary-700 w-fit transition-transform hover:-translate-x-1">
+        <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+        </svg>
+        {step === 1 ? 'Volver' : 'Atrás'}
+      </button>
+
+      <div className="mb-6 md:mb-10 flex justify-between items-center px-2">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className={`h-2 flex-1 mx-1 rounded-full transition-all duration-500 ${step >= i ? 'bg-primary-500' : 'bg-gray-200'}`} />
         ))}
       </div>
 
-      <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 min-h-[450px] flex flex-col">
-        
-        {currentStep === 1 && (
-          <div className="animate-fade-in space-y-6 flex-grow">
-            <header className="mb-4 text-center sm:text-left">
-              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Paso 1 de 4</span>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mt-1">Tu Salud Primero</h2>
-              <p className="text-sm text-slate-500 mt-2">Confírmanos si te encuentras en alguna de estas situaciones:</p>
-            </header>
-            <div className="grid gap-3">
-              <SafetyCard label="Embarazo o Lactancia" onCheck={() => handleSafetyCheck(true)} />
-              <SafetyCard label="Menor de 18 años" onCheck={() => handleSafetyCheck(true)} />
-              <SafetyCard label="Diabetes, TCA o patología cardíaca" onCheck={() => handleSafetyCheck(true)} />
-              <SafetyCard label="Medicación Metabólica Especial" onCheck={() => handleSafetyCheck(true)} />
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-xl">
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col justify-start">
+        {step === 1 && (
+          <div className="space-y-6 md:space-y-8 bg-white p-6 md:p-8 rounded-3xl shadow-xl border border-gray-100 fade-in">
+            <h2 className="text-xl md:text-2xl font-black text-gray-900">Tu Salud Primero</h2>
+            <p className="text-gray-500 text-sm">Por favor, indícanos si te encuentras en alguna de las siguientes situaciones:</p>
+            
+            <div className="space-y-3 md:space-y-4">
+              {[
+                { id: 'pregnancy', label: 'Embarazo o Lactancia' },
+                { id: 'under18', label: 'Menor de 18 años' },
+                { id: 'diabetesHeart', label: 'Diabetes o cardiopatías' },
+                { id: 'eatingDisorders', label: 'Trastornos alimentarios' }
+              ].map((item) => (
+                <label key={item.id} className="flex items-center p-4 rounded-xl border border-gray-100 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={(safetyCheck as any)[item.id]}
+                    onChange={(e) => setSafetyCheck(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                    className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 accent-primary-600"
+                  />
+                  <span className="ml-4 text-gray-700 font-semibold text-sm md:text-base">{item.label}</span>
+                </label>
+              ))}
             </div>
+
+            <button
+              onClick={nextStep}
+              className="w-full py-4 md:py-5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+            >
+              Siguiente Paso
+            </button>
           </div>
         )}
 
-        {currentStep === 2 && (
-          <div className="animate-fade-in space-y-8 flex-grow">
-            <header>
-              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Paso 2 de 4</span>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mt-1">Tu Perfil</h2>
-              <p className="text-sm text-slate-500 mt-2">Estos datos nos ayudan a calcular tu energía diaria ideal.</p>
-            </header>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Sexo</label>
-                <div className="flex gap-3">
-                  <ToggleButton active={data.sex === 'female'} onClick={() => setData({...data, sex: 'female'})} label="Mujer" />
-                  <ToggleButton active={data.sex === 'male'} onClick={() => setData({...data, sex: 'male'})} label="Hombre" />
+        {step === 2 && (
+          <div className="space-y-6 md:space-y-8 bg-white p-6 md:p-8 rounded-3xl shadow-xl border border-gray-100 fade-in">
+            <h2 className="text-xl md:text-2xl font-black text-gray-900">Datos Físicos</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Sexo</label>
+                <div className="grid grid-cols-2 gap-3 md:gap-4">
+                  <button 
+                    onClick={() => setFormData((p: any) => ({...p, gender: 'male'}))} 
+                    className={`py-3 md:py-4 rounded-xl border font-bold transition-all text-sm md:text-base ${formData.gender === 'male' ? 'bg-primary-600 border-primary-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-500'}`}
+                  >
+                    Hombre
+                  </button>
+                  <button 
+                    onClick={() => setFormData((p: any) => ({...p, gender: 'female'}))} 
+                    className={`py-3 md:py-4 rounded-xl border font-bold transition-all text-sm md:text-base ${formData.gender === 'female' ? 'bg-primary-600 border-primary-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-500'}`}
+                  >
+                    Mujer
+                  </button>
                 </div>
               </div>
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Edad</label>
+              
+              <div className="flex flex-col">
+                <label className="block text-sm font-semibold text-gray-700 mb-1 md:mb-2">Edad</label>
                 <input 
                   type="number" 
-                  value={data.age || ''} 
-                  onFocus={() => setData({...data, age: '' as any})}
-                  onChange={e => setData({...data, age: e.target.value === '' ? '' as any : +e.target.value})} 
-                  className="w-full p-4 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-center font-bold text-xl" 
+                  name="age" 
+                  value={formData.age} 
+                  onChange={handleChange} 
+                  onFocus={handleFocus}
+                  className={`w-full px-4 py-3 md:py-4 rounded-xl border outline-none text-lg md:text-xl font-bold text-gray-900 transition-colors ${fieldErrors.age ? 'border-red-500 bg-red-50' : 'border-gray-200'}`} 
                 />
+                {fieldErrors.age && <p className="text-red-500 text-[11px] mt-1 font-bold">{fieldErrors.age}</p>}
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Peso (kg)</label>
+
+              <div className="flex flex-col">
+                <label className="block text-sm font-semibold text-gray-700 mb-1 md:mb-2">Peso (kg)</label>
                 <input 
                   type="number" 
-                  value={data.weight || ''} 
-                  onFocus={() => setData({...data, weight: '' as any})}
-                  onChange={e => setData({...data, weight: e.target.value === '' ? '' as any : +e.target.value})} 
-                  className="w-full p-4 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-center font-bold text-xl" 
+                  name="weight" 
+                  value={formData.weight} 
+                  onChange={handleChange} 
+                  onFocus={handleFocus}
+                  className={`w-full px-4 py-3 md:py-4 rounded-xl border outline-none text-lg md:text-xl font-bold text-gray-900 transition-colors ${fieldErrors.weight ? 'border-red-500 bg-red-50' : 'border-gray-200'}`} 
                 />
+                {fieldErrors.weight && <p className="text-red-500 text-[11px] mt-1 font-bold">{fieldErrors.weight}</p>}
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Altura (cm)</label>
+
+              <div className="md:col-span-2 flex flex-col">
+                <label className="block text-sm font-semibold text-gray-700 mb-1 md:mb-2">Altura (cm)</label>
                 <input 
                   type="number" 
-                  value={data.height || ''} 
-                  onFocus={() => setData({...data, height: '' as any})}
-                  onChange={e => setData({...data, height: e.target.value === '' ? '' as any : +e.target.value})} 
-                  className="w-full p-4 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-center font-bold text-xl" 
+                  name="height" 
+                  value={formData.height} 
+                  onChange={handleChange} 
+                  onFocus={handleFocus}
+                  className={`w-full px-4 py-3 md:py-4 rounded-xl border outline-none text-lg md:text-xl font-bold text-gray-900 transition-colors ${fieldErrors.height ? 'border-red-500 bg-red-50' : 'border-gray-200'}`} 
                 />
+                {fieldErrors.height && <p className="text-red-500 text-[11px] mt-1 font-bold">{fieldErrors.height}</p>}
               </div>
             </div>
+
+            <button
+              onClick={nextStep}
+              className="w-full py-4 md:py-5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+            >
+              Siguiente
+            </button>
           </div>
         )}
 
-        {currentStep === 3 && (
-          <div className="animate-fade-in space-y-8 flex-grow">
-            <header>
-              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Paso 3 de 4</span>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mt-1">Tu Energía</h2>
-            </header>
+        {step === 3 && (
+          <div className="space-y-6 md:space-y-8 bg-white p-6 md:p-8 rounded-3xl shadow-xl border border-gray-100 fade-in text-center">
+            <h2 className="text-xl md:text-2xl font-black text-gray-900">¿Cómo te llamas?</h2>
+            <div className="max-w-md mx-auto">
+              <input 
+                type="text" 
+                name="name" 
+                value={formData.name} 
+                onChange={handleChange} 
+                className="w-full px-4 py-4 md:py-5 rounded-2xl border border-gray-200 focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none text-xl md:text-2xl text-center font-bold text-gray-900 transition-all" 
+                placeholder="Nombre (Opcional)" 
+              />
+              <p className="mt-4 text-xs md:text-sm text-gray-400">Puedes continuar sin introducir un nombre.</p>
+            </div>
+
+            <button
+              onClick={nextStep}
+              className="w-full py-4 md:py-5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+            >
+              Siguiente Paso
+            </button>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-6 md:space-y-8 bg-white p-6 md:p-8 rounded-3xl shadow-xl border border-gray-100 fade-in">
+            <h2 className="text-xl md:text-2xl font-black text-gray-900">
+              {isMobile ? (subStep4 === 0 ? 'Nivel de Actividad' : 'Tu Objetivo') : 'Actividad y Objetivo'}
+            </h2>
+            
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <ActivityBtn active={data.activity === ActivityLevel.SEDENTARY} label="Suave" desc="Poco activo" onClick={() => setData({...data, activity: ActivityLevel.SEDENTARY})} />
-                <ActivityBtn active={data.activity === ActivityLevel.LIGHT} label="Activo" desc="1-2 días" onClick={() => setData({...data, activity: ActivityLevel.LIGHT})} />
-                <ActivityBtn active={data.activity === ActivityLevel.MODERATE} label="Enérgico" desc="3-4 días" onClick={() => setData({...data, activity: ActivityLevel.MODERATE})} />
-                <ActivityBtn active={data.activity === ActivityLevel.HIGH} label="Atlético" desc="Deporte diario" onClick={() => setData({...data, activity: ActivityLevel.HIGH})} />
-              </div>
-              <div className="flex gap-4">
-                <ToggleButton active={data.diet === DietPreference.OMNIVORE} label="De todo" onClick={() => setData({...data, diet: DietPreference.OMNIVORE})} />
-                <ToggleButton active={data.diet === DietPreference.VEGETARIAN} label="Vegetariano" onClick={() => setData({...data, diet: DietPreference.VEGETARIAN})} />
-              </div>
+              {/* Parte de Actividad */}
+              {(!isMobile || subStep4 === 0) && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3 md:mb-4">Nivel de actividad:</label>
+                  <div className="grid grid-cols-1 gap-2 md:gap-3">
+                    {[
+                      { id: 'sedentary', label: 'Sedentario', desc: 'Poco movimiento.' },
+                      { id: 'light', label: 'Ligero', desc: 'Ejercicio suave 1-3 días.' },
+                      { id: 'moderate', label: 'Moderado', desc: 'Deporte activo 3-5 días.' },
+                      { id: 'heavy', label: 'Intenso', desc: 'Entrenamiento diario.' }
+                    ].map((act) => (
+                      <button
+                        key={act.id}
+                        type="button"
+                        onClick={() => setFormData((p: any) => ({...p, activityLevel: act.id}))}
+                        className={`p-3 md:p-4 rounded-xl md:rounded-2xl border text-left transition-all ${formData.activityLevel === act.id ? 'bg-primary-50 border-primary-500 ring-2 ring-primary-500' : 'bg-white border-gray-200 hover:border-primary-300'}`}
+                      >
+                        <p className={`font-bold text-sm md:text-base ${formData.activityLevel === act.id ? 'text-primary-700' : 'text-gray-900'}`}>{act.label}</p>
+                        <p className="text-[10px] md:text-xs text-gray-500">{act.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Parte de Objetivo */}
+              {(!isMobile || subStep4 === 1) && (
+                <div className={`${!isMobile ? 'border-t pt-6 md:pt-8' : ''}`}>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3 md:mb-4">Tu Objetivo:</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
+                    {[
+                      { id: 'lose', label: 'Perder Peso' },
+                      { id: 'maintain', label: 'Mantenerme' },
+                      { id: 'gain', label: 'Ganar Músculo' }
+                    ].map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => setFormData((p: any) => ({...p, goal: g.id}))}
+                        className={`py-3 md:py-4 px-2 rounded-xl md:rounded-2xl border text-xs md:text-sm font-bold transition-all ${formData.goal === g.id ? 'bg-primary-600 border-primary-600 text-white shadow-md' : 'bg-white border-gray-200 text-gray-500'}`}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+
+            <button
+              onClick={nextStep}
+              className="w-full py-4 md:py-5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+            >
+              {isMobile && subStep4 === 0 ? 'Siguiente' : 'Continuar: Preferencias'}
+            </button>
           </div>
         )}
 
-        {currentStep === 4 && (
-          <div className="animate-fade-in space-y-6 flex-grow">
-            <header>
-              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Paso 4 de 4</span>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mt-1">Horario y Ayuno</h2>
-            </header>
-            <div className="grid gap-3">
-              <FastingOption active={data.fastingType === 'none'} onClick={() => setData({...data, fastingType: 'none'})} title="Tradicional" desc="Distribución constante." icon="⏰" />
-              <FastingOption active={data.fastingType === '12-20'} onClick={() => setData({...data, fastingType: '12-20'})} title="Ayuno 12h-20h" desc="Cenas tarde o saltas desayuno." icon="🌙" />
-              <FastingOption active={data.fastingType === '9-17'} onClick={() => setData({...data, fastingType: '9-17'})} title="Ayuno 09h-17h" desc="Empiezas pronto, cenas ligero." icon="☀️" />
+        {step === 5 && (
+          <div className="space-y-6 md:space-y-8 bg-white p-6 md:p-8 rounded-3xl shadow-xl border border-gray-100 fade-in">
+            <h2 className="text-xl md:text-2xl font-black text-gray-900">Ajustes Finales</h2>
+            
+            <div className="space-y-6 md:space-y-8">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3 md:mb-4">Ayuno Intermitente:</label>
+                <div className="grid grid-cols-1 gap-3 md:gap-4">
+                  {[
+                    { id: 'none', label: 'Sin Ayuno', desc: 'Horario tradicional.' },
+                    { id: '16:8_morning', label: '16:8 - Sin Desayuno', desc: 'Comes desde las 12:00h.' },
+                    { id: '16:8_evening', label: '16:8 - Sin Cena', desc: 'Terminas a las 16:00h.' }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFormData((p: any) => ({...p, fasting: f.id}))}
+                      className={`p-4 md:p-5 rounded-xl md:rounded-2xl border text-left transition-all ${formData.fasting === f.id ? 'bg-primary-50 border-primary-500 ring-2 ring-primary-500' : 'bg-white border-gray-200'}`}
+                    >
+                      <span className={`font-bold block text-sm md:text-base ${formData.fasting === f.id ? 'text-primary-700' : 'text-gray-900'}`}>{f.label}</span>
+                      <p className="text-[10px] md:text-xs text-gray-500">{f.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t pt-6 md:pt-8">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Alergias:</label>
+                <textarea
+                  name="allergies"
+                  value={formData.allergies}
+                  onChange={handleChange}
+                  rows={2}
+                  className="w-full px-4 py-3 md:py-4 rounded-xl md:rounded-2xl border border-gray-200 outline-none text-base md:text-lg font-medium"
+                  placeholder="Ej: gluten, lactosa..."
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <select value={data.budget} onChange={e => setData({...data, budget: e.target.value as any})} className="w-full p-4 bg-slate-50 border-0 rounded-2xl font-bold text-sm text-slate-700">
-                <option value="bajo">Económico</option><option value="medio">Equilibrado</option><option value="alto">Gourmet</option>
-              </select>
-              <select value={data.cookingTime} onChange={e => setData({...data, cookingTime: e.target.value as any})} className="w-full p-4 bg-slate-50 border-0 rounded-2xl font-bold text-sm text-slate-700">
-                <option value="rapido">Exprés</option><option value="normal">Con tiempo</option>
-              </select>
-            </div>
+
+            <button
+              onClick={handleSubmit}
+              className="w-full py-4 md:py-5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98]"
+            >
+              Generar Mi Plan
+            </button>
           </div>
         )}
-
-        <div className="mt-6 flex gap-4 pt-8 border-t border-slate-50">
-          <button onClick={prev} className="px-6 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all flex items-center gap-2">
-            <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-          </button>
-          <button 
-            onClick={currentStep === totalSteps ? () => onComplete(data) : next}
-            className="flex-grow py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 transition-all text-sm md:text-base"
-          >
-            {currentStep === totalSteps ? '¡Ver mi Plan! ✨' : 'Continuar'}
-          </button>
-        </div>
       </div>
+
+      <FooterAESAN />
     </div>
   );
 };
-
-const FastingOption = ({ active, onClick, title, desc, icon }: any) => (
-  <button onClick={onClick} className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all ${active ? 'border-emerald-600 bg-emerald-50' : 'border-slate-50 bg-slate-50 hover:bg-slate-100'}`}>
-    <div className="text-2xl shrink-0">{icon}</div>
-    <div className="flex-grow">
-      <p className={`text-sm font-bold block ${active ? 'text-emerald-700' : 'text-slate-700'}`}>{title}</p>
-      <p className="text-[11px] text-slate-400 font-medium leading-tight">{desc}</p>
-    </div>
-  </button>
-);
-
-const SafetyCard = ({ label, onCheck }: any) => (
-  <label className="flex items-center gap-4 p-4 border border-slate-100 rounded-2xl hover:bg-emerald-50 cursor-pointer transition-all group">
-    <input type="checkbox" onChange={e => e.target.checked && onCheck()} className="w-5 h-5 rounded border-slate-200 text-emerald-500" />
-    <span className="text-sm text-slate-700 font-medium">{label}</span>
-  </label>
-);
-
-const ToggleButton = ({ active, onClick, label }: any) => (
-  <button onClick={onClick} className={`flex-1 py-4 rounded-2xl font-bold text-sm transition-all ${active ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{label}</button>
-);
-
-const ActivityBtn = ({ active, label, desc, onClick }: any) => (
-  <button onClick={onClick} className={`p-4 rounded-2xl border-2 text-left transition-all ${active ? 'border-emerald-600 bg-emerald-50' : 'border-slate-50 bg-slate-50 opacity-60 hover:opacity-100'}`}>
-    <p className={`text-sm font-bold block ${active ? 'text-emerald-700' : 'text-slate-700'}`}>{label}</p>
-    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">{desc}</p>
-  </button>
-);
 
 export default Onboarding;

@@ -1,106 +1,83 @@
 
-import { GoogleGenAI } from "@google/genai";
-
 export async function onRequestPost(context) {
-  const { env } = context;
+  const { env, request } = context;
   const apiKey = env.API_KEY;
 
   if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "API_KEY no configurada en Cloudflare." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ message: "API Key not configured" }), { 
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 
   try {
-    const { userData, targetCalories } = await context.request.json();
-    const ai = new GoogleGenAI({ apiKey });
+    const { user, targetCalories } = await request.json();
 
-    let fastingInstruction = "";
-    if (userData.fastingType === '12-20') {
-      fastingInstruction = "IMPORTANTE: El usuario realiza AYUNO INTERMITENTE 16:8 (Ventana 12:00h a 20:00h). Todas las comidas deben ocurrir estrictamente en ese horario.";
-    } else if (userData.fastingType === '9-17') {
-      fastingInstruction = "IMPORTANTE: El usuario realiza AYUNO INTERMITENTE 16:8 (Ventana 09:00h a 17:00h). Todas las comidas deben ocurrir estrictamente en ese horario.";
-    }
+    const fastingRules = user.fasting === 'none' 
+      ? "Incluye 5 comidas tradicionales: desayuno (08:30), media mañana (11:30), comida (14:30), merienda (17:30) y cena (21:00)."
+      : user.fasting === '16:8_morning'
+      ? "Sigue ayuno 16:8 (salta el desayuno). Ventana de alimentación de 12:00h a 20:00h. Incluye media mañana, comida, merienda y cena."
+      : "Sigue ayuno 16:8 (salta la cena). Ventana de alimentación de 08:00h a 16:00h. Incluye desayuno, media mañana, comida y merienda.";
 
-    // Semilla aleatoria para forzar a la IA a cambiar de contexto cada vez
-    const randomSeed = Math.floor(Math.random() * 10000000);
-
-    const prompt = `
-      Actúa como un Nutricionista Colegiado experto en Dieta Mediterránea CREATIVA y variada. 
-      Genera un plan de alimentación detallado para 7 días completos (Lunes a Domingo).
-      
-      MISIÓN CRÍTICA DE VARIEDAD (Semilla Aleatoria: ${randomSeed}):
-      Es OBLIGATORIO que este plan sea TOTALMENTE DIFERENTE a cualquier plan estándar. 
-      Evita la repetición. Si el plan anterior fue de un estilo, este debe ser radicalmente variado en ingredientes (pescados, carnes magras, legumbres diversas, verduras de temporada, cereales integrales variados).
-      No queremos que el usuario coma lo mismo cada semana. Sorpréndele con recetas mediterráneas saludables, coloridas y modernas.
-
-      PERFIL DE USUARIO:
-      - Objetivo Calórico: ${targetCalories} kcal/día (Margen +/- 5%).
-      - Tipo de Dieta: ${userData.diet}.
-      - Alergias/Intolerancias: ${userData.allergies || 'Ninguna'}.
-      - Alimentos a evitar: ${userData.dislikedFoods || 'Ninguno'}.
-      - Presupuesto: ${userData.budget} (ajusta ingredientes según esto).
-      - Tiempo de cocina: ${userData.cookingTime}.
-      - ${fastingInstruction}
-
-      REGLAS DE RESPUESTA:
-      1. Solo responde con el objeto JSON solicitado. No añadidas texto extra.
-      2. No incluyas lista de la compra global (ya se detalla en ingredientes).
-      3. Asegura que los platos sean nutricionalmente equilibrados pero muy variados.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          required: ["days"],
-          properties: {
-            days: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                required: ["day", "totalCalories", "meals", "waterGoal"],
-                properties: {
-                  day: { type: "STRING" },
-                  totalCalories: { type: "NUMBER" },
-                  waterGoal: { type: "STRING" },
-                  meals: {
-                    type: "ARRAY",
-                    items: {
-                      type: "OBJECT",
-                      required: ["name", "type", "time", "ingredients", "instructions", "calories", "prepTime"],
-                      properties: {
-                        name: { type: "STRING" },
-                        type: { type: "STRING" },
-                        time: { type: "STRING" },
-                        ingredients: { type: "ARRAY", items: { type: "STRING" } },
-                        instructions: { type: "ARRAY", items: { type: "STRING" } },
-                        calories: { type: "NUMBER" },
-                        prepTime: { type: "STRING" }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+    const prompt = `Eres un nutricionista clínico experto de SantiSystems. Crea un plan semanal de 7 días para ${user.name}. 
+    Objetivo: ${user.goal === 'lose' ? 'Pérdida de peso saludable' : user.goal === 'gain' ? 'Ganancia muscular' : 'Mantenimiento'}.
+    Calorías diarias: ${targetCalories} kcal.
+    
+    REGLA DE ORO: Cumplimiento estricto de la AESAN. NO INVENTES recetas extrañas ni ingredientes procesados. Usa Dieta Mediterránea real.
+    
+    CONFIGURACIÓN DE HORARIOS:
+    ${fastingRules}
+    
+    Alergias/Restricciones: ${user.allergies || 'Ninguna'}.
+    
+    RESPONDE EXCLUSIVAMENTE EN FORMATO JSON:
+    {
+      "days": [
+        {
+          "day": "Lunes",
+          "meals": {
+            "breakfast": { "name": "...", "ingredients": ["..."], "instructions": ["..."], "calories": 0, "prepTime": 0 },
+            "snack1": { "name": "...", "ingredients": ["..."], "instructions": ["..."], "calories": 0, "prepTime": 0 },
+            "lunch": { "name": "...", "ingredients": ["..."], "instructions": ["..."], "calories": 0, "prepTime": 0 },
+            "snack2": { "name": "...", "ingredients": ["..."], "instructions": ["..."], "calories": 0, "prepTime": 0 },
+            "dinner": { "name": "...", "ingredients": ["..."], "instructions": ["..."], "calories": 0, "prepTime": 0 }
+          },
+          "totalCalories": 0
         }
-      }
+      ]
+    }
+    
+    Importante: Si el usuario salta una comida por el ayuno, el campo correspondiente en el JSON debe ser null. 
+    Asegúrate de que las recetas sean variadas y realistas.`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.65
+        }
+      })
     });
 
-    return new Response(response.text, {
+    if (!response.ok) {
+      const err = await response.text();
+      return new Response(err, { status: response.status });
+    }
+
+    const data = await response.json();
+    const resultText = data.candidates[0].content.parts[0].text;
+
+    return new Response(resultText, {
       headers: { "Content-Type": "application/json" }
     });
 
   } catch (error) {
-    console.error("Error en Function:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Error procesando el plan." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ message: error.message }), { 
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }

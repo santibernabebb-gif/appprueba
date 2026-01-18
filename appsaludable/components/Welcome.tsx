@@ -3,93 +3,90 @@ import React from 'react';
 
 interface Props {
   onStart: () => void;
-  onViewHistory?: () => void;
-  hasHistory?: boolean;
+  onViewHistory: () => void;
+  hasHistory: boolean;
 }
 
 const Welcome: React.FC<Props> = ({ onStart, onViewHistory, hasHistory }) => {
   return (
-    <div className="relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/3 w-96 h-96 bg-emerald-50 rounded-full blur-3xl opacity-50"></div>
-      <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/3 w-64 h-64 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary-50 to-white px-6 py-12 text-center fade-in">
+      
+      {/* Branding Superior Izquierdo */}
+      <div className="absolute top-6 left-6 text-left no-print">
+        <p className="text-sm font-bold text-primary-700 leading-none">AdelgazaSaludable</p>
+        <p className="text-[10px] text-gray-400 font-medium">SantiSystems</p>
+      </div>
 
-      <div className="relative container mx-auto px-6 py-8 md:py-12">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-6 animate-fade-in">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            Nutricionista Digital Inteligente
-          </div>
-          
-          <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 leading-[1.1] mb-6 tracking-tight">
-            Nutre tu mejor versión: <span className="text-emerald-600">Planes reales</span> para una vida vibrante.
-          </h1>
-          
-          <p className="text-lg text-slate-500 leading-relaxed mb-8 max-w-2xl mx-auto">
-            Descubre el equilibrio perfecto con menús diseñados exclusivamente para tu ritmo de vida, gustos y objetivos. Saludable, sencillo y delicioso.
-          </p>
+      {/* Navegación Superior Derecha */}
+      <div className="absolute top-4 md:top-6 right-6 no-print">
+        <button
+          onClick={onViewHistory}
+          className="text-xs font-bold text-primary-600 hover:text-primary-700 flex items-center bg-white shadow-sm border border-primary-100 px-3 py-2 rounded-xl transition-all active:scale-95"
+        >
+          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Historial recetas
+        </button>
+      </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button 
-              onClick={onStart}
-              className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-xl shadow-emerald-200 transition-all transform hover:scale-105 active:scale-95"
-            >
-              Crear mi menú personalizado →
-            </button>
-            
-            {hasHistory && (
-              <button 
-                onClick={onViewHistory}
-                className="w-full sm:w-auto px-8 py-4 bg-white text-slate-600 font-bold rounded-2xl shadow-sm border border-slate-100 hover:bg-slate-50 transition-all"
-              >
-                Ver planes anteriores
-              </button>
-            )}
-          </div>
-          
-          <div className="mt-8 flex items-center justify-center gap-4 text-slate-400 text-xs font-medium">
-            <div className="flex -space-x-2">
-              {[1,2,3,4].map(i => (
-                <div key={i} className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 overflow-hidden">
-                  <img src={`https://i.pravatar.cc/100?img=${i+15}`} alt="User" />
-                </div>
-              ))}
-            </div>
-            <span>Únete a cientos de personas comiendo mejor</span>
-          </div>
+      <div className="w-24 h-24 bg-primary-500 rounded-2xl flex items-center justify-center shadow-lg mb-8">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-14 w-14 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+      </div>
+      
+      <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4">Adelgaza Saludable</h1>
+      <p className="text-lg md:text-xl text-gray-600 max-w-lg mb-10 leading-relaxed">
+        Tu asistente personal de nutrición inteligente. Crea planes mediterráneos personalizados para alcanzar tus objetivos de salud.
+      </p>
+      
+      <div className="flex flex-col sm:flex-row gap-4">
+        <button
+          onClick={onStart}
+          className="px-10 py-4 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-xl transition-all hover:scale-105 focus:ring-4 focus:ring-primary-100 active:scale-95"
+        >
+          Empezar mi transformación
+        </button>
+        
+        {hasHistory && (
+          <button
+            onClick={onViewHistory}
+            className="px-10 py-4 bg-white hover:bg-gray-50 text-primary-700 font-bold rounded-xl shadow-md border border-primary-100 transition-all hover:scale-105 active:scale-95 flex items-center justify-center"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Historial de recetas
+          </button>
+        )}
+      </div>
+      
+      <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-4xl">
+        <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
+          <div className="text-primary-600 font-bold text-xl mb-2">IA Inteligente</div>
+          <p className="text-gray-500 text-sm">Planes adaptados a tus objetivos exactos.</p>
         </div>
-
-        <div className="grid md:grid-cols-3 gap-6 mt-12">
-          <FeatureCard 
-            icon="🍎"
-            title="Salud Real"
-            desc="Basado en ingredientes de mercado y platos de toda la vida."
-          />
-          <FeatureCard 
-            icon="✨"
-            title="Flexibilidad"
-            desc="Adaptamos el plan a tus horarios, no al revés."
-          />
-          <FeatureCard 
-            icon="🧘"
-            title="Sin Estrés"
-            desc="Ingredientes detallados en cada receta y pasos rápidos."
-          />
+        <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
+          <div className="text-primary-600 font-bold text-xl mb-2">Salud Primero</div>
+          <p className="text-gray-500 text-sm">Basado en la ciencia de la dieta mediterránea.</p>
+        </div>
+        <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
+          <div className="text-primary-600 font-bold text-xl mb-2">Fácil de Seguir</div>
+          <p className="text-gray-500 text-sm">Recetas paso a paso realistas.</p>
         </div>
       </div>
+
+      {/* Footer AESAN */}
+      <footer className="mt-12 pt-8 border-t border-gray-100 w-full max-w-2xl">
+        <p className="text-[11px] text-gray-400 leading-relaxed italic">
+          Estas recetas siguen estrictamente las directrices nutricionales de la <span className="font-bold text-gray-500">AESAN</span> (Agencia Española de Seguridad Alimentaria y Nutrición). 
+          La IA está supervisada por la AESAN para garantizar que las sugerencias sean seguras, reales y saludables.
+        </p>
+        <p className="text-[10px] text-gray-300 mt-4 font-medium uppercase tracking-widest">SantiSystems 2026</p>
+      </footer>
     </div>
   );
 };
-
-const FeatureCard = ({ icon, title, desc }: any) => (
-  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-    <div className="text-3xl mb-3">{icon}</div>
-    <h3 className="text-base font-bold text-slate-800 mb-1">{title}</h3>
-    <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
-  </div>
-);
 
 export default Welcome;

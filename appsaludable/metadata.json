@@ -1,5 +1,5 @@
 {
-  "name": "Santisystems – Adelgaza Saludable",
-  "description": "Aplicación profesional para la generación de planes de alimentación saludables basados en criterios de AESAN y el Ministerio de Sanidad de España, con soporte para ayuno intermitente y seguimiento de hábitos.",
+  "name": "Adelgaza Saludable",
+  "description": "Generador de planes nutricionales personalizados basados en dieta mediterránea y ayuno intermitente, con recetas detalladas y seguimiento de progreso.",
   "requestFramePermissions": []
 }

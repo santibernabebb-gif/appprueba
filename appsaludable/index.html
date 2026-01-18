@@ -1,60 +1,119 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#059669">
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Adelgaza Saludable - App</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adelgaza Saludable</title>
+    <meta name="description" content="Tu plan nutricional semanal personalizado">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="https://picsum.photos/32/32" type="image/png">
+    
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-      :root {
-        --safe-area-inset-top: env(safe-area-inset-top);
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            },
+            colors: {
+              primary: {
+                50: '#f0fdf4',
+                100: '#dcfce7',
+                500: '#22c55e',
+                600: '#16a34a',
+                700: '#15803d',
+              }
+            }
+          }
+        }
       }
+    </script>
+
+    <style>
       body {
         font-family: 'Plus Jakarta Sans', sans-serif;
-        background-color: #f8fafc;
-        color: #1e293b;
-        margin: 0;
-        padding: 0;
-        -webkit-tap-highlight-color: transparent;
-        user-select: none;
+        background-color: #f9fafb;
       }
-      .safe-area-top {
-        padding-top: var(--safe-area-inset-top);
-      }
-      .animate-fade-in {
-        animation: fadeIn 0.4s ease-out;
+
+      /* Transitions */
+      .fade-in {
+        animation: fadeIn 0.3s ease-in-out;
       }
       @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(8px); }
+        from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
       }
-      /* Ocultar scrollbars para sensación nativa */
-      ::-webkit-scrollbar {
-        display: none;
+
+      /* Print Styles */
+      @media print {
+        .no-print {
+          display: none !important;
+        }
+        body {
+          background-color: white !important;
+          color: black !important;
+        }
+        .print-container {
+          padding: 0 !important;
+          margin: 0 !important;
+          width: 100% !important;
+        }
+        .recipe-card {
+          break-inside: avoid;
+          border: 1px solid #e5e7eb;
+          margin-bottom: 2rem;
+          padding: 1.5rem;
+        }
+        .page-break {
+          page-break-after: always;
+        }
       }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "jspdf": "https://esm.sh/jspdf@^2.5.1"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body className="overscroll-none">
+<body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-  </body>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(reg => {
+              console.log('SW registered');
+              
+              // Forzar comprobación de actualización al iniciar la app
+              reg.update();
+
+              // Si hay un Service Worker esperando, forzar que tome el control
+              if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+              }
+            })
+            .catch(err => console.log('SW registration failed', err));
+        });
+
+        // Detectar cuando el nuevo Service Worker toma el control y recargar
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        });
+      }
+    </script>
+</body>
 </html>
